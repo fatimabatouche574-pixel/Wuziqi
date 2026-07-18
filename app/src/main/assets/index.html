@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#191714">
+  <title>十九路围棋</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #191714;
+      --panel: #24211d;
+      --line: rgba(255,255,255,.11);
+      --text: #f5efe5;
+      --muted: #b9afa1;
+      --accent: #d3a85f;
+      --accent-dark: #8c6530;
+      --board: #d5a65f;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; overscroll-behavior: none; }
+    body { padding: max(10px, env(safe-area-inset-top)) 10px max(14px, env(safe-area-inset-bottom)); user-select: none; }
+    button, select { font: inherit; }
+    .app { width: min(100%, 760px); margin: 0 auto; display: grid; gap: 10px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .title { margin: 0; font-size: 20px; line-height: 1.2; font-weight: 700; letter-spacing: .04em; }
+    .turn-badge { flex: none; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); padding: 7px 11px; font-size: 13px; color: var(--muted); }
+    .turn-badge strong { color: var(--text); font-weight: 650; }
+    .metrics { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 8px; }
+    .metric { min-width: 0; border: 1px solid var(--line); border-radius: 13px; background: var(--panel); padding: 9px 10px; }
+    .metric-label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+    .metric-value { margin-top: 3px; font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .board-shell { position: relative; overflow: hidden; border-radius: 14px; border: 1px solid rgba(0,0,0,.55); background: var(--board); box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); }
+    canvas { display: block; width: 100%; aspect-ratio: 1; touch-action: none; }
+    .thinking-cover { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(20,17,13,.25); opacity: 0; pointer-events: none; transition: opacity .15s ease; }
+    .thinking-cover.show { opacity: 1; }
+    .thinking-pill { border: 1px solid rgba(255,255,255,.15); border-radius: 999px; background: rgba(28,25,21,.9); padding: 8px 13px; font-size: 13px; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+    .progress-track { height: 7px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.08); }
+    .progress-bar { width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent-dark), var(--accent)); transition: width .12s linear; }
+    .controls { display: grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 8px; }
+    select, button { min-height: 44px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text); padding: 0 12px; outline: none; }
+    button:active { transform: scale(.985); }
+    button:disabled, select:disabled { opacity: .45; }
+    .primary { border-color: rgba(211,168,95,.55); background: linear-gradient(180deg, #b18142, #8b612e); color: #fff8eb; font-weight: 700; }
+    .secondary-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .status-box { border: 1px solid var(--line); border-radius: 13px; background: var(--panel); padding: 10px 11px; }
+    .status-line { min-height: 22px; font-size: 14px; line-height: 1.45; }
+    .status-sub { margin-top: 3px; font-size: 11px; line-height: 1.45; color: var(--muted); }
+    .result { display: none; border: 1px solid rgba(211,168,95,.45); border-radius: 13px; background: rgba(211,168,95,.12); padding: 11px; font-size: 14px; line-height: 1.5; white-space: pre-line; }
+    .result.show { display: block; }
+    .legend { display: flex; flex-wrap: wrap; gap: 7px 12px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .dot { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 50%; vertical-align: -1px; border: 1px solid rgba(255,255,255,.28); }
+    .dot.black { background: #111; }
+    .dot.white { background: #f5f3ed; }
+    @media (max-width: 390px) { body { padding-left: 7px; padding-right: 7px; } .title { font-size: 18px; } .metric { padding: 8px; } .metric-value { font-size: 14px; } select, button { padding: 0 8px; font-size: 14px; } }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <h1 class="title">十九路围棋</h1>
+      <div class="turn-badge">你执 <strong>黑棋</strong></div>
+    </header>
+
+    <section class="metrics" aria-label="对局信息">
+      <div class="metric"><div class="metric-label">当前状态</div><div id="stateValue" class="metric-value">你先行</div></div>
+      <div class="metric"><div class="metric-label">提子 黑 : 白</div><div id="captureValue" class="metric-value">0 : 0</div></div>
+      <div class="metric"><div class="metric-label">AI 推演</div><div id="nodeValue" class="metric-value">0</div></div>
+    </section>
+
+    <section class="board-shell">
+      <canvas id="board" aria-label="标准十九路围棋棋盘"></canvas>
+      <div id="thinkingCover" class="thinking-cover"><div id="thinkingPill" class="thinking-pill">电脑思考中</div></div>
+    </section>
+
+    <div class="progress-track" aria-hidden="true"><div id="progressBar" class="progress-bar"></div></div>
+
+    <section class="controls" aria-label="主要控制">
+      <select id="difficulty" aria-label="电脑难度">
+        <option value="normal">普通难度</option>
+        <option value="strong">强势难度</option>
+        <option value="crush">碾压难度</option>
+      </select>
+      <button id="passButton" type="button">停一手</button>
+      <button id="undoButton" type="button">悔棋</button>
+    </section>
+
+    <section class="secondary-controls">
+      <button id="newButton" class="primary" type="button">重新开局</button>
+      <button id="hintButton" type="button">落子提示</button>
+    </section>
+
+    <section class="status-box" aria-live="polite">
+      <div id="message" class="status-line">点击棋盘交叉点落子。</div>
+      <div id="detail" class="status-sub">白棋贴 7.5 目。双方连续停一手后自动终局数子。</div>
+    </section>
+
+    <section id="result" class="result"></section>
+
+    <footer class="legend">
+      <span><i class="dot black"></i>玩家</span>
+      <span><i class="dot white"></i>电脑</span>
+      <span>支持提子、禁自杀、简单劫争</span>
+      <span>碾压模式会明显增加耗时与耗电</span>
+    </footer>
+  </main>
+
+  <script>
+  (() => {
+    'use strict';
+
+    const SIZE = 19;
+    const EMPTY = 0;
+    const BLACK = 1;
+    const WHITE = 2;
+    const KOMI = 7.5;
+    const LETTERS = 'ABCDEFGHJKLMNOPQRST';
+
+    const LEVELS = {
+      normal: { label: '普通', simulations: 28, depth: 22, roots: 10, rolloutWidth: 8, chunk: 4 },
+      strong: { label: '强势', simulations: 150, depth: 48, roots: 20, rolloutWidth: 12, chunk: 5 },
+      crush: { label: '碾压', simulations: 720, depth: 90, roots: 34, rolloutWidth: 16, chunk: 4 }
+    };
+
+    const canvas = document.getElementById('board');
+    const context = canvas.getContext('2d');
+    const stateValue = document.getElementById('stateValue');
+    const captureValue = document.getElementById('captureValue');
+    const nodeValue = document.getElementById('nodeValue');
+    const progressBar = document.getElementById('progressBar');
+    const thinkingCover = document.getElementById('thinkingCover');
+    const thinkingPill = document.getElementById('thinkingPill');
+    const difficulty = document.getElementById('difficulty');
+    const passButton = document.getElementById('passButton');
+    const undoButton = document.getElementById('undoButton');
+    const newButton = document.getElementById('newButton');
+    const hintButton = document.getElementById('hintButton');
+    const message = document.getElementById('message');
+    const detail = document.getElementById('detail');
+    const result = document.getElementById('result');
+
+    let game = createGame();
+    let history = [];
+    let thinking = false;
+    let searchToken = 0;
+    let previewPoint = -1;
+    let hintPoint = -1;
+    let geometry = { size: 0, margin: 0, cell: 0 };
+
+    function createGame() {
+      return { board: Array(SIZE * SIZE).fill(EMPTY), turn: BLACK, captures: { [BLACK]: 0, [WHITE]: 0 }, koHash: null, passes: 0, lastMove: -1, over: false, status: '你先行', message: '点击棋盘交叉点落子。', detail: '白棋贴 7.5 目。双方连续停一手后自动终局数子。', result: '' };
+    }
+
+    function cloneGame(source = game) {
+      return { board: source.board.slice(), turn: source.turn, captures: { [BLACK]: source.captures[BLACK], [WHITE]: source.captures[WHITE] }, koHash: source.koHash, passes: source.passes, lastMove: source.lastMove, over: source.over, status: source.status, message: source.message, detail: source.detail, result: source.result };
+    }
+
+    const opponent = color => color === BLACK ? WHITE : BLACK;
+    const hashBoard = board => board.join('');
+
+    function neighbors(point) {
+      const x = point % SIZE;
+      const y = Math.floor(point / SIZE);
+      const output = [];
+      if (x > 0) output.push(point - 1);
+      if (x < SIZE - 1) output.push(point + 1);
+      if (y > 0) output.push(point - SIZE);
+      if (y < SIZE - 1) output.push(point + SIZE);
+      return output;
+    }
+
+    function collectGroup(board, start) {
+      const color = board[start];
+      const stack = [start];
+      const visited = new Set([start]);
+      const stones = [];
+      const liberties = new Set();
+      while (stack.length) {
+        const point = stack.pop();
+        stones.push(point);
+        for (const next of neighbors(point)) {
+          if (board[next] === EMPTY) liberties.add(next);
+          else if (board[next] === color && !visited.has(next)) { visited.add(next); stack.push(next); }
+        }
+      }
+      return { stones, liberties };
+    }
+
+    function tryMove(board, color, point, koHash) {
+      if (point < 0 || point >= board.length || board[point] !== EMPTY) return null;
+      const nextBoard = board.slice();
+      nextBoard[point] = color;
+      const enemy = opponent(color);
+      const checked = new Set();
+      let captured = 0;
+
+      for (const next of neighbors(point)) {
+        if (nextBoard[next] !== enemy || checked.has(next)) continue;
+        const group = collectGroup(nextBoard, next);
+        group.stones.forEach(stone => checked.add(stone));
+        if (group.liberties.size === 0) {
+          captured += group.stones.length;
+          group.stones.forEach(stone => { nextBoard[stone] = EMPTY; });
+        }
+      }
+
+      const ownGroup = collectGroup(nextBoard, point);
+      if (ownGroup.liberties.size === 0) return null;
+      if (koHash && hashBoard(nextBoard) === koHash) return null;
+      return { board: nextBoard, captured, liberties: ownGroup.liberties.size, groupSize: ownGroup.stones.length };
+    }
+
+    function occupiedCount(board) { let count = 0; for (const value of board) if (value !== EMPTY) count++; return count; }
+    function isEye(board, color, point) { const close = neighbors(point); return close.length >= 3 && close.every(next => board[next] === color); }
+
+    function candidatePool(board) {
+      const pool = new Set();
+      const occupied = occupiedCount(board);
+      if (occupied < 8) {
+        const opening = [[3,3],[15,3],[3,15],[15,15],[9,9],[3,9],[15,9],[9,3],[9,15],[4,4],[14,4],[4,14],[14,14],[2,3],[16,3],[2,15],[16,15]];
+        opening.forEach(([x, y]) => { const point = y * SIZE + x; if (board[point] === EMPTY) pool.add(point); });
+      }
+      for (let point = 0; point < board.length; point++) {
+        if (board[point] === EMPTY) continue;
+        const x = point % SIZE;
+        const y = Math.floor(point / SIZE);
+        for (let dy = -2; dy <= 2; dy++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            if (Math.abs(dx) + Math.abs(dy) > 3) continue;
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx < 0 || nx >= SIZE || ny < 0 || ny >= SIZE) continue;
+            const candidate = ny * SIZE + nx;
+            if (board[candidate] === EMPTY) pool.add(candidate);
+          }
+        }
+      }
+      if (pool.size < 40) {
+        for (let point = 0; point < board.length && pool.size < 55; point++) {
+          if (board[point] === EMPTY && Math.random() < .22) pool.add(point);
+        }
+      }
+      return [...pool];
+    }
+
+    function moveHeuristic(board, color, point, move) {
+      const x = point % SIZE;
+      const y = Math.floor(point / SIZE);
+      const occupied = occupiedCount(board);
+      let value = move.captured * 78;
+      value += Math.min(move.liberties, 7) * 2.8;
+      value += Math.min(move.groupSize, 10) * .45;
+      const seen = new Set();
+      for (const next of neighbors(point)) {
+        if (board[next] === EMPTY) continue;
+        const group = collectGroup(board, next);
+        const key = Math.min(...group.stones);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (group.liberties.size === 1 && group.liberties.has(point)) value += board[next] === color ? 34 + group.stones.length * 5 : 28 + group.stones.length * 6;
+        else if (group.liberties.size === 2 && group.liberties.has(point)) value += board[next] === color ? 8 : 13;
+      }
+      if (occupied < 30) {
+        const corners = [[3,3],[15,3],[3,15],[15,15]];
+        const nearestCorner = Math.min(...corners.map(([cx, cy]) => Math.hypot(x - cx, y - cy)));
+        value += Math.max(0, 9 - nearestCorner * 1.45);
+      }
+      const edgeDistance = Math.min(x, y, SIZE - 1 - x, SIZE - 1 - y);
+      if (occupied < 24 && edgeDistance === 0) value -= 9;
+      if (move.liberties === 1 && move.captured === 0) value -= 60;
+      if (isEye(board, color, point) && move.captured === 0) value -= 50;
+      return value;
+    }
+
+    function generateCandidates(board, color, koHash, limit) {
+      const output = [];
+      for (const point of candidatePool(board)) {
+        const move = tryMove(board, color, point, koHash);
+        if (!move) continue;
+        output.push({ point, move, heuristic: moveHeuristic(board, color, point, move) });
+      }
+      output.sort((a, b) => b.heuristic - a.heuristic);
+      return output.slice(0, limit);
+    }
+
+    function weightedChoice(candidates) {
+      const top = candidates.slice(0, Math.min(9, candidates.length));
+      const best = top[0].heuristic;
+      const weights = top.map(item => Math.exp((item.heuristic - best) / 13) + .04);
+      let random = Math.random() * weights.reduce((sum, weight) => sum + weight, 0);
+      for (let index = 0; index < top.length; index++) { random -= weights[index]; if (random <= 0) return top[index]; }
+      return top[top.length - 1];
+    }
+
+    function scoreArea(board) {
+      let black = 0;
+      let white = KOMI;
+      const visited = new Set();
+      for (let point = 0; point < board.length; point++) {
+        if (board[point] === BLACK) { black++; continue; }
+        if (board[point] === WHITE) { white++; continue; }
+        if (visited.has(point)) continue;
+        const stack = [point];
+        const region = [];
+        const borders = new Set();
+        visited.add(point);
+        while (stack.length) {
+          const current = stack.pop();
+          region.push(current);
+          for (const next of neighbors(current)) {
+            if (board[next] === EMPTY && !visited.has(next)) { visited.add(next); stack.push(next); }
+            else if (board[next] !== EMPTY) borders.add(board[next]);
+          }
+        }
+        if (borders.size === 1 && borders.has(BLACK)) black += region.length;
+        if (borders.size === 1 && borders.has(WHITE)) white += region.length;
+      }
+      return { black, white };
+    }
+
+    function evaluateBoard(board) {
+      const area = scoreArea(board);
+      let safety = 0;
+      const visited = new Set();
+      for (let point = 0; point < board.length; point++) {
+        if (board[point] === EMPTY || visited.has(point)) continue;
+        const group = collectGroup(board, point);
+        group.stones.forEach(stone => visited.add(stone));
+        const value = Math.min(group.liberties.size, 7) * .13;
+        safety += board[point] === WHITE ? value : -value;
+      }
+      return area.white - area.black + safety;
+    }
+
+    function rollout(startBoard, nextColor, startKoHash, config) {
+      let board = startBoard.slice();
+      let color = nextColor;
+      let koHash = startKoHash;
+      let passes = 0;
+      for (let depth = 0; depth < config.depth && passes < 2; depth++) {
+        const candidates = generateCandidates(board, color, koHash, config.rolloutWidth);
+        if (!candidates.length || (depth > 30 && candidates[0].heuristic < -22 && Math.random() < .16)) {
+          passes++;
+          koHash = hashBoard(board);
+          color = opponent(color);
+          continue;
+        }
+        passes = 0;
+        const selected = weightedChoice(candidates);
+        const oldHash = hashBoard(board);
+        board = selected.move.board;
+        koHash = oldHash;
+        color = opponent(color);
+      }
+      return evaluateBoard(board);
+    }
+
+    async function chooseComputerMove(token) {
+      const config = LEVELS[difficulty.value];
+      const currentHash = hashBoard(game.board);
+      const roots = generateCandidates(game.board, WHITE, game.koHash, config.roots);
+      if (!roots.length) return null;
+      const stats = roots.map(candidate => {
+        const replies = generateCandidates(candidate.move.board, BLACK, currentHash, 4);
+        const danger = replies.length ? Math.max(0, replies[0].heuristic) : 0;
+        return { candidate, visits: 0, total: 0, prior: candidate.heuristic - danger * .52 };
+      });
+      for (let simulation = 0; simulation < config.simulations; simulation++) {
+        if (token !== searchToken) return null;
+        let selected = stats.find(item => item.visits === 0);
+        if (!selected) {
+          const logVisits = Math.log(simulation + 1);
+          selected = stats.reduce((best, item) => {
+            const average = item.total / item.visits;
+            const exploration = Math.sqrt(logVisits / item.visits);
+            const value = average + item.prior * .024 + exploration;
+            return !best || value > best.value ? { value, item } : best;
+          }, null).item;
+        }
+        selected.total += rollout(selected.candidate.move.board, BLACK, currentHash, config);
+        selected.visits++;
+        if ((simulation + 1) % config.chunk === 0 || simulation + 1 === config.simulations) {
+          updateThinking(simulation + 1, config.simulations, config);
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      }
+      stats.sort((a, b) => (b.total / b.visits + b.prior * .035) - (a.total / a.visits + a.prior * .035));
+      return stats[0].candidate;
+    }
+
+    function saveHistory() { history.push(cloneGame()); }
+
+    function applyMove(color, point, move) {
+      saveHistory();
+      const oldHash = hashBoard(game.board);
+      game.board = move.board;
+      game.captures[color] += move.captured;
+      game.koHash = oldHash;
+      game.passes = 0;
+      game.lastMove = point;
+      game.turn = opponent(color);
+      game.status = color === BLACK ? '电脑思考' : '轮到你';
+      game.message = move.captured ? `${color === BLACK ? '你' : '电脑'}提了 ${move.captured} 子。` : `${color === BLACK ? '你' : '电脑'}落在 ${coordinate(point)}。`;
+      game.detail = color === BLACK ? '正在计算白棋应手。' : '点击交叉点继续落子。';
+      hintPoint = -1;
+    }
+
+    function applyPass(color) {
+      saveHistory();
+      game.koHash = hashBoard(game.board);
+      game.passes++;
+      game.lastMove = -1;
+      game.turn = opponent(color);
+      game.status = color === BLACK ? '电脑思考' : '轮到你';
+      game.message = color === BLACK ? '你选择停一手。' : '电脑选择停一手。';
+      game.detail = game.passes === 1 ? '若另一方也停一手，对局将结束。' : '';
+      hintPoint = -1;
+      if (game.passes >= 2) finishGame();
+    }
+
+    function finishGame() {
+      const score = scoreArea(game.board);
+      const difference = score.black - score.white;
+      const winner = difference > 0 ? '黑棋胜' : '白棋胜';
+      game.over = true;
+      game.status = '对局结束';
+      game.message = `${winner} ${Math.abs(difference).toFixed(1)} 目。`;
+      game.detail = `黑棋 ${score.black.toFixed(1)} 目，白棋 ${score.white.toFixed(1)} 目（含贴目）。`;
+      game.result = `${winner} ${Math.abs(difference).toFixed(1)} 目\n黑棋：${score.black.toFixed(1)}　白棋：${score.white.toFixed(1)}`;
+    }
+
+    async function computerTurn() {
+      if (thinking || game.over || game.turn !== WHITE) return;
+      thinking = true;
+      const token = ++searchToken;
+      const config = LEVELS[difficulty.value];
+      game.status = '电脑思考';
+      game.message = `${config.label}难度正在分析局面。`;
+      game.detail = `最多进行 ${config.simulations} 次蒙特卡洛推演，模拟深度 ${config.depth} 手。`;
+      updateThinking(0, config.simulations, config);
+      render();
+      const selected = await chooseComputerMove(token);
+      if (token !== searchToken) return;
+      if (selected) applyMove(WHITE, selected.point, selected.move); else applyPass(WHITE);
+      thinking = false;
+      if (!game.over) { game.status = '轮到你'; game.detail = '点击棋盘交叉点落下黑棋。'; }
+      clearThinking();
+      render();
+    }
+
+    function playerMove(point) {
+      if (thinking || game.over || game.turn !== BLACK) return;
+      const move = tryMove(game.board, BLACK, point, game.koHash);
+      if (!move) { game.message = '这里不能落子。'; game.detail = '该点可能已有棋子，或触发禁自杀、简单劫争规则。'; render(); return; }
+      applyMove(BLACK, point, move);
+      render();
+      computerTurn();
+    }
+
+    function coordinate(point) { const x = point % SIZE; const y = Math.floor(point / SIZE); return `${LETTERS[x]}${SIZE - y}`; }
+    function updateThinking(done, total, config) { nodeValue.textContent = String(done); progressBar.style.width = total ? `${done / total * 100}%` : '0%'; thinkingPill.textContent = `${config.label}搜索 ${done}/${total}`; thinkingCover.classList.add('show'); }
+    function clearThinking() { progressBar.style.width = '0%'; thinkingCover.classList.remove('show'); }
+
+    function render() {
+      stateValue.textContent = game.status;
+      captureValue.textContent = `${game.captures[BLACK]} : ${game.captures[WHITE]}`;
+      message.textContent = game.message;
+      detail.textContent = game.detail;
+      passButton.disabled = thinking || game.over || game.turn !== BLACK;
+      undoButton.disabled = thinking || history.length === 0;
+      difficulty.disabled = thinking;
+      hintButton.disabled = thinking || game.over || game.turn !== BLACK;
+      result.textContent = game.result;
+      result.classList.toggle('show', Boolean(game.result));
+      drawBoard();
+    }
+
+    function drawBoard() {
+      const rect = canvas.getBoundingClientRect();
+      const size = rect.width;
+      if (!size) return;
+      const dpr = Math.min(2.5, window.devicePixelRatio || 1);
+      canvas.width = Math.round(size * dpr);
+      canvas.height = Math.round(size * dpr);
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      geometry = { size, margin: size * .064, cell: size * .872 / 18 };
+      context.clearRect(0, 0, size, size);
+      context.fillStyle = '#d5a65f';
+      context.fillRect(0, 0, size, size);
+      const wood = context.createLinearGradient(0, 0, size, size);
+      wood.addColorStop(0, 'rgba(255,255,255,.15)'); wood.addColorStop(.5, 'rgba(255,255,255,.025)'); wood.addColorStop(1, 'rgba(71,38,9,.11)');
+      context.fillStyle = wood; context.fillRect(0, 0, size, size);
+      drawCoordinates();
+      context.strokeStyle = 'rgba(43,27,10,.92)'; context.lineWidth = Math.max(.65, size / 800);
+      for (let line = 0; line < SIZE; line++) {
+        const position = geometry.margin + line * geometry.cell;
+        context.beginPath(); context.moveTo(geometry.margin, position); context.lineTo(size - geometry.margin, position); context.stroke();
+        context.beginPath(); context.moveTo(position, geometry.margin); context.lineTo(position, size - geometry.margin); context.stroke();
+      }
+      context.fillStyle = 'rgba(43,27,10,.95)';
+      for (const x of [3, 9, 15]) for (const y of [3, 9, 15]) { context.beginPath(); context.arc(geometry.margin + x * geometry.cell, geometry.margin + y * geometry.cell, Math.max(1.35, geometry.cell * .11), 0, Math.PI * 2); context.fill(); }
+      for (let point = 0; point < game.board.length; point++) if (game.board[point] !== EMPTY) drawStone(point, game.board[point], point === game.lastMove);
+      if (hintPoint >= 0 && game.board[hintPoint] === EMPTY) drawMarker(hintPoint, '#8a301f', geometry.cell * .19, 2);
+      if (previewPoint >= 0 && !thinking && !game.over && game.turn === BLACK && game.board[previewPoint] === EMPTY && tryMove(game.board, BLACK, previewPoint, game.koHash)) {
+        const x = geometry.margin + (previewPoint % SIZE) * geometry.cell;
+        const y = geometry.margin + Math.floor(previewPoint / SIZE) * geometry.cell;
+        context.globalAlpha = .42; context.fillStyle = '#111'; context.beginPath(); context.arc(x, y, geometry.cell * .465, 0, Math.PI * 2); context.fill(); context.globalAlpha = 1;
+      }
+    }
+
+    function drawCoordinates() {
+      if (geometry.size < 320) return;
+      context.save(); context.fillStyle = 'rgba(60,38,14,.72)'; context.font = `${Math.max(7, geometry.cell * .34)}px sans-serif`; context.textAlign = 'center'; context.textBaseline = 'middle';
+      for (let index = 0; index < SIZE; index++) { const p = geometry.margin + index * geometry.cell; context.fillText(LETTERS[index], p, geometry.margin * .45); context.fillText(String(SIZE - index), geometry.margin * .45, p); }
+      context.restore();
+    }
+
+    function drawStone(point, color, isLast) {
+      const x = geometry.margin + (point % SIZE) * geometry.cell;
+      const y = geometry.margin + Math.floor(point / SIZE) * geometry.cell;
+      const radius = geometry.cell * .47;
+      context.save(); context.shadowColor = 'rgba(0,0,0,.32)'; context.shadowBlur = radius * .24; context.shadowOffsetY = radius * .12;
+      const gradient = context.createRadialGradient(x - radius * .32, y - radius * .35, radius * .08, x, y, radius);
+      if (color === BLACK) { gradient.addColorStop(0, '#606060'); gradient.addColorStop(.34, '#202020'); gradient.addColorStop(1, '#040404'); }
+      else { gradient.addColorStop(0, '#ffffff'); gradient.addColorStop(.58, '#f2f0e9'); gradient.addColorStop(1, '#bdb9b0'); }
+      context.fillStyle = gradient; context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.fill(); context.restore();
+      if (isLast) { context.strokeStyle = color === BLACK ? '#eee5d7' : '#2b2721'; context.lineWidth = Math.max(1, radius * .13); context.beginPath(); context.arc(x, y, radius * .27, 0, Math.PI * 2); context.stroke(); }
+    }
+
+    function drawMarker(point, color, radius, lineWidth) { const x = geometry.margin + (point % SIZE) * geometry.cell; const y = geometry.margin + Math.floor(point / SIZE) * geometry.cell; context.strokeStyle = color; context.lineWidth = lineWidth; context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.stroke(); }
+
+    function locatePoint(event) {
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const gridX = Math.round((x - geometry.margin) / geometry.cell);
+      const gridY = Math.round((y - geometry.margin) / geometry.cell);
+      if (gridX < 0 || gridX >= SIZE || gridY < 0 || gridY >= SIZE) return -1;
+      const exactX = geometry.margin + gridX * geometry.cell;
+      const exactY = geometry.margin + gridY * geometry.cell;
+      return Math.hypot(x - exactX, y - exactY) <= geometry.cell * .72 ? gridY * SIZE + gridX : -1;
+    }
+
+    canvas.addEventListener('pointerdown', event => { canvas.setPointerCapture(event.pointerId); previewPoint = locatePoint(event); drawBoard(); });
+    canvas.addEventListener('pointermove', event => { if (event.pointerType === 'mouse' || event.buttons) { previewPoint = locatePoint(event); drawBoard(); } });
+    canvas.addEventListener('pointerup', event => { const point = locatePoint(event); previewPoint = -1; drawBoard(); if (point >= 0) playerMove(point); });
+    canvas.addEventListener('pointercancel', () => { previewPoint = -1; drawBoard(); });
+
+    passButton.addEventListener('click', () => { if (thinking || game.over || game.turn !== BLACK) return; applyPass(BLACK); render(); if (!game.over) computerTurn(); });
+    undoButton.addEventListener('click', () => {
+      if (thinking || history.length === 0) return;
+      searchToken++;
+      const steps = game.turn === BLACK ? Math.min(2, history.length) : 1;
+      const targetIndex = history.length - steps;
+      game = history[targetIndex];
+      history.splice(targetIndex, steps);
+      game.status = '轮到你'; game.message = '已经退回上一回合。'; game.detail = '你可以重新选择黑棋落点。'; hintPoint = -1; clearThinking(); render();
+    });
+    newButton.addEventListener('click', () => { searchToken++; thinking = false; history = []; game = createGame(); previewPoint = -1; hintPoint = -1; nodeValue.textContent = '0'; clearThinking(); render(); });
+    hintButton.addEventListener('click', () => {
+      if (thinking || game.over || game.turn !== BLACK) return;
+      const candidates = generateCandidates(game.board, BLACK, game.koHash, 1);
+      if (!candidates.length) { game.message = '当前没有找到合适的合法落点。'; game.detail = '你可以选择停一手。'; }
+      else { hintPoint = candidates[0].point; game.message = `提示落点：${coordinate(hintPoint)}。`; game.detail = '红色圆圈只是提示，不会自动替你落子。'; }
+      render();
+    });
+    difficulty.addEventListener('change', () => {
+      const config = LEVELS[difficulty.value];
+      game.message = `已切换到${config.label}难度。`;
+      game.detail = difficulty.value === 'crush' ? '碾压模式会进行更深推演，手机可能需要等待较长时间。' : `该难度最多模拟 ${config.depth} 手。`;
+      render();
+    });
+
+    window.addEventListener('resize', drawBoard);
+    if ('ResizeObserver' in window) new ResizeObserver(drawBoard).observe(canvas.parentElement);
+    render();
+  })();
+  </script>
+</body>
+</html>
